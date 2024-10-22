@@ -43,7 +43,7 @@ class STN(nn.Module):
 Adapted from: https://github.com/UMBCvision/Universal-Litmus-Patterns/blob/master/CIFAR-10/utils/model.py
 Modified init_num_filters from 32 to 64
 Modified inter_fc_dim from 128 to 384
-Removed STN usage. Have to check whether the models in the dataset use it.
+Disabled STN since the models at (https://drive.google.com/drive/folders/1ye2KCRfzhbjtV3TMSRR5vlSBlvqNUqYL) fail to load with it.
 '''
 
 class VGG_MOD(nn.Module):
@@ -54,7 +54,7 @@ class VGG_MOD(nn.Module):
             inter_fc_dim (int): intermediate fully connected dimensionality prior to embedding layer
             embedding_dim (int): embedding dimensionality
     """
-    def __init__(self, init_num_filters=64, lrelu_slope=0.2, inter_fc_dim=384, num_classes=10,nofchannels=3,use_stn=True):
+    def __init__(self, init_num_filters=64, lrelu_slope=0.2, inter_fc_dim=384, num_classes=10,nofchannels=3,use_stn=False):
         super(VGG_MOD, self).__init__()
         self.use_stn=use_stn
         self.init_num_filters_ = init_num_filters
