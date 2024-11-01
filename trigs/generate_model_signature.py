@@ -25,7 +25,8 @@ warnings.filterwarnings("ignore")
 
 def tv(img):
     if img.ndim != 4:
-        raise RuntimeError(f"Expected input `img` to be an 4D tensor, but got {img.shape}")
+        raise RuntimeError(
+            f"Expected input `img` to be a 4D tensor, but got {img.shape}")
     diff1 = img[..., 1:, :] - img[..., :-1, :]
     diff2 = img[..., :, 1:] - img[..., :, :-1]
 
@@ -39,6 +40,7 @@ class ClassSpecificImageGeneration:
     """
     Produces an image that maximizes the logit of a certain class with gradient ascent
     """
+
     def __init__(
             self,
             model: nn.Module,
@@ -79,7 +81,8 @@ class ClassSpecificImageGeneration:
         self.standardize_output = standardize_output
         self.clamp_pixels_freq = clamp_pixels_freq
         self.lambda_tv = lambda_tv
-        self.tv = tv if TotalVariation is None else TotalVariation(reduction='none').to(get_device())
+        self.tv = tv if TotalVariation is None else TotalVariation(
+            reduction='none').to(get_device())
 
         if optim_type == 'ADAM':
             self.optim_class = Adam
@@ -112,7 +115,8 @@ class ClassSpecificImageGeneration:
         processed_images.requires_grad = True
         targets = torch.as_tensor(target_class, device=get_device())
         indices = torch.arange(end=len(target_class), device=get_device())
-        optimizer = self.optim_class([processed_images], lr=self.lr, weight_decay=self.wd)
+        optimizer = self.optim_class(
+            [processed_images], lr=self.lr, weight_decay=self.wd)
         min_losses = [float('inf')] * len(target_class)
         best_images = processed_images.clone()
         for i in range(self.iterations):
@@ -124,7 +128,8 @@ class ClassSpecificImageGeneration:
                                                      [self.blur_ks, self.blur_ks],
                                                      self.blur_sigma)
                 processed_images.requires_grad = True
-                optimizer = self.optim_class([processed_images], lr=self.lr, weight_decay=self.wd)
+                optimizer = self.optim_class(
+                    [processed_images], lr=self.lr, weight_decay=self.wd)
             # Forward
             output = self.model(processed_images)
 
@@ -133,12 +138,15 @@ class ClassSpecificImageGeneration:
                 class_loss = F.cross_entropy(output, targets)
             elif self.loss_type == 'logit':
                 class_loss = -output[indices, targets]
+            elif self.loss_type == 'grad_norm':
+                class_loss = None
             else:
                 raise ValueError(f"Unsupported loss type: {self.loss_type}")
             if ascent:
                 class_loss = -class_loss
 
-            tv_loss = (self.lambda_tv * self.tv(processed_images)) if self.lambda_tv > 0. else 0.
+            tv_loss = (self.lambda_tv * self.tv(processed_images)
+                       ) if self.lambda_tv > 0. else 0.
 
             total_loss = class_loss + tv_loss
 
@@ -162,7 +170,8 @@ class ClassSpecificImageGeneration:
                     processed_images.grad[gi] = img_grad
 
             if self.clipping_val > 0:
-                torch.nn.utils.clip_grad_norm(processed_images, self.clipping_val)
+                torch.nn.utils.clip_grad_norm(
+                    processed_images, self.clipping_val)
             # Update image
             optimizer.step()
 
@@ -177,9 +186,11 @@ class ClassSpecificImageGeneration:
                     tmp_images[:, channel, ...] /= self.std[channel]
                 # For some reason, I have to use contiguous() call in the following line
                 processed_images = tmp_images.contiguous().requires_grad_()
-                optimizer = self.optim_class([processed_images], lr=self.lr, weight_decay=self.wd)
+                optimizer = self.optim_class(
+                    [processed_images], lr=self.lr, weight_decay=self.wd)
 
-        predictions = torch.argmax(self.model(best_images), dim=1).detach().cpu().numpy()
+        predictions = torch.argmax(self.model(
+            best_images), dim=1).detach().cpu().numpy()
 
         # Recreate image
         created_images = self.recreate_images(best_images.cpu())
@@ -195,7 +206,8 @@ class ClassSpecificImageGeneration:
             im_as_param (torch.Tensor): a tensor that requires gradient
         """
         ims_as_arrs = np.float32(imgs)
-        ims_as_arrs = ims_as_arrs.transpose(0, 3, 1, 2)  # Convert array to B,C,H,W
+        ims_as_arrs = ims_as_arrs.transpose(
+            0, 3, 1, 2)  # Convert array to B,C,H,W
         ims_as_arrs /= 255
         # Normalize the channels
         for channel in range(ims_as_arrs.shape[1]):
@@ -239,12 +251,14 @@ def main():
     parser.add_argument("--model_name", type=str, default="",
                         help='Name of the architecture for the probe model. '
                              'Use vggmod with CIFAR10, resnet18_mod with Tiny ImageNet, and vit16b with ImageNet.')
-    parser.add_argument("--weights_path", type=str, default="", help='Path to model weights file.')
+    parser.add_argument("--weights_path", type=str,
+                        default="", help='Path to model weights file.')
     parser.add_argument("--iterations", type=int, default=200,
                         help='Number of optimization iterations. Use default to reproduce paper results.')
     parser.add_argument("--learning_rate", type=float, required=True,
                         help='Learning rate. Use 10 with CIFAR10 and 0.1 with others to reproduce paper results.')
-    parser.add_argument("--output_dir", type=str, required=True, help="Path to store the resulting signature images.")
+    parser.add_argument("--output_dir", type=str, required=True,
+                        help="Path to store the resulting signature images.")
     parser.add_argument("--opt_type", type=str, default='ADAM', choices=['ADAM', 'SGD'],
                         help='Optimizer to use. Use default to reproduce paper results.')
     parser.add_argument("--blur_freq", type=int, default=None,
@@ -259,9 +273,9 @@ def main():
     parser.add_argument("--normalize_grad", action='store_true', default=False,
                         help='If used, gradients will be normalized to a unit vector before every opt steps. '
                              'Do NOT use to reproduce paper results.')
-    parser.add_argument("--loss_type", type=str, default='logit', choices=['logit', 'ce'],
+    parser.add_argument("--loss_type", type=str, default='logit', choices=['logit', 'ce', 'grad_norm'],
                         help='''Whether to optimize the logit value or the cross entropy loss. Use default to reproduce 
-                        paper results.''')
+                        paper results. On top of the authors' code we are experimenting with a new type of signature involving the gradient norm that uses higher order derivatives''')
     parser.add_argument("--standardize_output", action='store_true', default=False,
                         help='Convert each signature image to have 0.5 mean and 0.25 std. Use only with CIFAR10.')
     parser.add_argument("--clamp_pixels_freq", type=int, default=None,
@@ -316,7 +330,8 @@ def main():
         std = [0.229, 0.224, 0.225]
     elif dataset_name == 'TrojAI':
         height, width, channels = 224, 224, 3
-        config_path = os.path.join(os.path.dirname(weights_path), "config.json")
+        config_path = os.path.join(
+            os.path.dirname(weights_path), "config.json")
         with open(config_path, "rt") as fp:
             cfg = json.load(fp)
         n_classes = cfg["NUMBER_CLASSES"]
@@ -354,7 +369,8 @@ def main():
             break
         end_class_no = min(start_class_no + batch_size, n_classes) - 1
         # create the minimization signature channels
-        last_file_name = os.path.join(output_dir, f"+{str(end_class_no).zfill(3)}.png")
+        last_file_name = os.path.join(
+            output_dir, f"+{str(end_class_no).zfill(3)}.png")
         if not os.path.exists(last_file_name):
             imgs, _ = image_gen.generate(
                 target_class=list(range(start_class_no, end_class_no + 1)),
@@ -363,11 +379,13 @@ def main():
             class_no = start_class_no
             for img in imgs:
                 im = Image.fromarray(img)
-                out_file_name = os.path.join(output_dir, f"+{str(class_no).zfill(3)}.png")
+                out_file_name = os.path.join(
+                    output_dir, f"+{str(class_no).zfill(3)}.png")
                 im.save(out_file_name)
                 class_no += 1
         # create the maximization signature channels
-        last_file_name = os.path.join(output_dir, f"-{str(end_class_no).zfill(3)}.png")
+        last_file_name = os.path.join(
+            output_dir, f"-{str(end_class_no).zfill(3)}.png")
         if not os.path.exists(last_file_name):
             imgs, _ = image_gen.generate(
                 target_class=list(range(start_class_no, end_class_no + 1)),
@@ -376,7 +394,8 @@ def main():
             class_no = start_class_no
             for img in imgs:
                 im = Image.fromarray(img)
-                out_file_name = os.path.join(output_dir, f"-{str(class_no).zfill(3)}.png")
+                out_file_name = os.path.join(
+                    output_dir, f"-{str(class_no).zfill(3)}.png")
                 im.save(out_file_name)
                 class_no += 1
     print("SUCCESS!")
