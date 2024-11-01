@@ -1,4 +1,4 @@
-from signature_dataset import SignatureDataset
+from trigs.signature_dataset import SignatureDataset
 from torchvision import transforms as T
 from lightning import LightningDataModule
 from torch.utils.data import random_split, DataLoader

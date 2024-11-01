@@ -75,8 +75,18 @@ class FlexResNet(nn.Module):
         x = self.resnet_model(x)
         return x
 
+    def load_state_dict(self, state_dict, strict: bool = True):
+        new_state_dict={}
+        for key, value in state_dict.items():
+            if not key.startswith('resnet_model.'):
+                new_key = f"resnet_model.{key}"
+                new_state_dict[new_key] = value
+            else:
+                new_state_dict[key] = value
 
-def resnet18_mod(pretrained=False, progress=True, **kwargs):
+        return super().load_state_dict(new_state_dict, strict=strict)
+
+def resnet18_mod(num_classes=100, weights=None, progress=True, **kwargs):
     return FlexResNet(conv1_args={
                           "in_channels": 3,
                           "out_channels": 64,
@@ -87,12 +97,12 @@ def resnet18_mod(pretrained=False, progress=True, **kwargs):
                       },
                       block=BasicBlock,
                       layers=[1, 1, 1, 1],
-                      pretrained=pretrained,
-                      progress=progress, **kwargs)
+                      num_classes=num_classes,
+                      **kwargs)
 
 
-def baseline_classifier(num_channels, pretrained=False, progress=True, **kwargs):
-    base_model = models.resnext50_32x4d()
+def baseline_classifier(num_channels, weights=None, progress=True, **kwargs):
+    base_model = models.resnext50_32x4d(weights-weights)
     inplanes = num_channels // 3
     conv1_args = {
         "in_channels": num_channels,

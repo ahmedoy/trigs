@@ -19,7 +19,7 @@ from sklearn.metrics import (
     auc,
 )
 import os
-from signature_dm import SignatureDataModule
+from trigs.signature_dm import SignatureDataModule
 import pandas as pd
 import json
 
