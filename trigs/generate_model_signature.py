@@ -91,12 +91,11 @@ class ClassSpecificImageGeneration:
             self.optim_class = SGD
         else:
             raise ValueError(f"Unsupported optimizer type: {optim_type}")
-
-
-        # Prepare the inputs tensor
+        
         self.model = model
         if self.loss_type == "grad_norm":
             self.model = self.swap_model_activation(self.model)
+            
         self.model.eval()
 
         # Generate a random image
@@ -261,6 +260,9 @@ class ClassSpecificImageGeneration:
         recreated_ims = np.uint8(recreated_ims).transpose(0, 2, 3, 1)
         return recreated_ims
 
+
+
+
     def swap_model_activation(self, model: nn.Module) -> nn.Module:
         # TODO Train the model to work after swapping SiLU
         for name, module in model.named_children():
@@ -269,7 +271,9 @@ class ClassSpecificImageGeneration:
             else:
                 self.swap_model_activation(module)  # Recursively check child modules
         return model
-    
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, required=True,
