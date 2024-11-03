@@ -87,8 +87,11 @@ class ClassSpecificImageGeneration:
             self.optim_class = SGD
         else:
             raise ValueError(f"Unsupported optimizer type: {optim_type}")
-
+        
         self.model = model
+        if self.loss_type == "grad_norm":
+            self.model = self.swap_model_activation(self.model)
+            
         self.model.eval()
 
         # Generate a random image
@@ -231,6 +234,19 @@ class ClassSpecificImageGeneration:
         return recreated_ims
 
 
+
+
+    def swap_model_activation(self, model: nn.Module) -> nn.Module:
+        # TODO Train the model to work after swapping SiLU
+        for name, module in model.named_children():
+            if isinstance(module, nn.ReLU):
+                setattr(model, name, nn.SiLU())
+            else:
+                self.swap_model_activation(module)  # Recursively check child modules
+        return model
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_name", type=str, required=True,
@@ -353,32 +369,56 @@ def main():
         if debug and start_class_no > 5:
             break
         end_class_no = min(start_class_no + batch_size, n_classes) - 1
-        # create the minimization signature channels
-        last_file_name = os.path.join(output_dir, f"+{str(end_class_no).zfill(3)}.png")
-        if not os.path.exists(last_file_name):
-            imgs, _ = image_gen.generate(
-                target_class=list(range(start_class_no, end_class_no + 1)),
-                ascent=True
-            )
-            class_no = start_class_no
-            for img in imgs:
-                im = Image.fromarray(img)
-                out_file_name = os.path.join(output_dir, f"+{str(class_no).zfill(3)}.png")
-                im.save(out_file_name)
-                class_no += 1
-        # create the maximization signature channels
-        last_file_name = os.path.join(output_dir, f"-{str(end_class_no).zfill(3)}.png")
-        if not os.path.exists(last_file_name):
-            imgs, _ = image_gen.generate(
-                target_class=list(range(start_class_no, end_class_no + 1)),
-                ascent=False
-            )
-            class_no = start_class_no
-            for img in imgs:
-                im = Image.fromarray(img)
-                out_file_name = os.path.join(output_dir, f"-{str(class_no).zfill(3)}.png")
-                im.save(out_file_name)
-                class_no += 1
+
+
+        # check if using grad_norm mode
+        if loss_type == 'grad_norm':
+            # create the hessian/grad_norm signature channels
+            last_file_name = os.path.join(
+                output_dir, f"h_{str(end_class_no).zfill(3)}.png")
+            if not os.path.exists(last_file_name):
+                imgs, _ = image_gen.generate(
+                    target_class=list(range(start_class_no, end_class_no + 1)),
+                    ascent=False
+                )
+                class_no = start_class_no
+                for img in imgs:
+                    im = Image.fromarray(img)
+                    out_file_name = os.path.join(
+                        output_dir, f"h_{str(class_no).zfill(3)}.png")
+                    im.save(out_file_name)
+                    class_no += 1
+        else:
+            # create the minimization signature channels
+            last_file_name = os.path.join(
+                output_dir, f"+{str(end_class_no).zfill(3)}.png")
+            if not os.path.exists(last_file_name):
+                imgs, _ = image_gen.generate(
+                    target_class=list(range(start_class_no, end_class_no + 1)),
+                    ascent=True
+                )
+                class_no = start_class_no
+                for img in imgs:
+                    im = Image.fromarray(img)
+                    out_file_name = os.path.join(
+                        output_dir, f"+{str(class_no).zfill(3)}.png")
+                    im.save(out_file_name)
+                    class_no += 1
+            # create the maximization signature channels
+            last_file_name = os.path.join(
+                output_dir, f"-{str(end_class_no).zfill(3)}.png")
+            if not os.path.exists(last_file_name):
+                imgs, _ = image_gen.generate(
+                    target_class=list(range(start_class_no, end_class_no + 1)),
+                    ascent=False
+                )
+                class_no = start_class_no
+                for img in imgs:
+                    im = Image.fromarray(img)
+                    out_file_name = os.path.join(
+                        output_dir, f"-{str(class_no).zfill(3)}.png")
+                    im.save(out_file_name)
+                    class_no += 1
     print("SUCCESS!")
 
 
