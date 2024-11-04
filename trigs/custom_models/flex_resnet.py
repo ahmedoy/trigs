@@ -101,8 +101,8 @@ def resnet18_mod(num_classes=100, weights=None, progress=True, **kwargs):
                       **kwargs)
 
 
-def baseline_classifier(num_channels, weights=None, progress=True, **kwargs):
-    base_model = models.resnext50_32x4d(weights-weights)
+def baseline_classifier(num_channels, pretrained=False, progress=True, **kwargs):
+    base_model = models.resnext50_32x4d()
     inplanes = num_channels // 3
     conv1_args = {
         "in_channels": num_channels,
