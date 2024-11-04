@@ -398,6 +398,7 @@ def main():
         standardize_output=standardize_output,
         clamp_pixels_freq=clamp_pixels_freq,
         lambda_tv=lambda_tv,
+        grad_norm_weight=grad_norm_weight
     )
 
     for start_class_no in tqdm(range(0, n_classes, batch_size)):
