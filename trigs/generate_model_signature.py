@@ -63,6 +63,7 @@ class ClassSpecificImageGeneration:
             standardize_output: Optional[bool] = True,
             clamp_pixels_freq: Optional[int] = None,
             lambda_tv: Optional[float] = 0.,
+            grad_norm_weight: Optional[float] = None
     ):
         self.mean = mean
         self.std = std
@@ -78,6 +79,7 @@ class ClassSpecificImageGeneration:
         self.clipping_val = clipping_val
         self.normalize_grad = normalize_grad
         self.loss_type = loss_type
+        self.grad_norm_weight = grad_norm_weight
         self.wd = wd
         self.standardize_output = standardize_output
         self.clamp_pixels_freq = clamp_pixels_freq
@@ -151,7 +153,7 @@ class ClassSpecificImageGeneration:
                     # Create computation graph for the gradient of each image logit with respect to its target class
                     grad_i = torch.autograd.grad(class_logits[image_class], processed_images, create_graph=True, allow_unused=True)
                     grad_norm = sum(g.pow(2).sum() for g in grad_i) # Square L2 Norm of the gradient
-                    grad_norms_loss[image_class]  = -grad_norm   # Negate to maximize
+                    grad_norms_loss[image_class]  = -grad_norm*self.grad_norm_weight   # Negate to maximize
 
 
                 # Set class loss to grad_norms_loss just for compatibility
@@ -307,6 +309,8 @@ def main():
     parser.add_argument("--loss_type", type=str, default='logit', choices=['logit', 'ce', 'grad_norm'],
                         help='''Whether to optimize the logit value or the cross entropy loss. Use default to reproduce 
                         paper results. Use grad_norm to extract the experimental hessian signatures''')
+    parser.add_argument("--grad_norm_weight", type=float, default=50, 
+                        help='''Weight for the grad_norm loss. Will be ignore if using loss type other than grad_norm''')
     parser.add_argument("--standardize_output", action='store_true', default=False,
                         help='Convert each signature image to have 0.5 mean and 0.25 std. Use only with CIFAR10.')
     parser.add_argument("--clamp_pixels_freq", type=int, default=None,
@@ -338,6 +342,7 @@ def main():
     clamp_pixels_freq = args.clamp_pixels_freq
     lambda_tv = args.lambda_tv
     batch_size = args.batch_size
+    grad_norm_weight = args.grad_norm_weight
     debug = args.debug
 
     classifier = load_models_into_program(
