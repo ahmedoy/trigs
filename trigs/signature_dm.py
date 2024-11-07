@@ -73,9 +73,11 @@ class SignatureDataModule(LightningDataModule):
         valid_dataset = torch.utils.data.ConcatDataset(
             [valid_clean_dataset, valid_poisoned_dataset]
         )
-        train_dataset = torch.utils.data.ConcatDataset(
-            [train_clean_dataset, train_poisoned_dataset]
-        )
+        # train_dataset = torch.utils.data.ConcatDataset(
+        #     [train_clean_dataset, train_poisoned_dataset]
+        # )
+        # removed the poisoned dataset from the train dataset 
+        train_dataset=train_clean_dataset
         print(f"Train dataset size: {len(train_dataset)}")
         print(f"Validation dataset size: {len(valid_dataset)}")
         self.valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=False, num_workers=2)
