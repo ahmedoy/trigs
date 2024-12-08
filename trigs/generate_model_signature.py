@@ -62,6 +62,7 @@ class ClassSpecificImageGeneration:
             standardize_output: Optional[bool] = True,
             clamp_pixels_freq: Optional[int] = None,
             lambda_tv: Optional[float] = 0.,
+            signatures_per_class: Optional[int] = 1
     ):
         self.mean = mean
         self.std = std
@@ -80,6 +81,7 @@ class ClassSpecificImageGeneration:
         self.wd = wd
         self.standardize_output = standardize_output
         self.clamp_pixels_freq = clamp_pixels_freq
+        self.signatures_per_class = signatures_per_class
         self.lambda_tv = lambda_tv
         self.tv = tv if TotalVariation is None else TotalVariation(
             reduction='none').to(get_device())
@@ -95,10 +97,7 @@ class ClassSpecificImageGeneration:
         self.model.eval()
 
         # Generate a random image
-        rng = np.random.default_rng(seed=928462)
-        self.init_image = np.uint8(
-            rng.uniform(0, 255, (width, height, channels))
-        )
+        self.rng = np.random.default_rng(seed=928462)
 
     def generate(self, target_class: [int, List[int]] = 0, ascent: bool = True) -> Tuple[np.ndarray, int]:
         """Generates class specific image
@@ -109,7 +108,12 @@ class ClassSpecificImageGeneration:
         """
         if isinstance(target_class, int):
             target_class = [target_class]
-        created_images = np.tile(self.init_image, [len(target_class), 1, 1, 1])
+
+        num_classes = len(target_class)
+        created_images = np.uint8(
+            self.rng.uniform(0, 255, (num_classes, self.w , self.h, self.c ))
+        )
+        print(created_images.shape)
         processed_images = self.images_to_tensors(created_images)
         processed_images = processed_images.to(get_device())
         processed_images.requires_grad = True
@@ -285,6 +289,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=None,
                         help='Number of signature images to create at the same time. '
                              'Adjust based on your GPU memory for ImageNet and use default for others.')
+    parser.add_argument("--signatures_per_class", type=int, default=1,
+                        help='Number of min/max signatures to create per class')
     parser.add_argument("--debug", action='store_true', default=False,
                         help='Debug mode. Do NOT use to reproduce paper results.')
 
@@ -307,6 +313,7 @@ def main():
     clamp_pixels_freq = args.clamp_pixels_freq
     lambda_tv = args.lambda_tv
     batch_size = args.batch_size
+    signatures_per_class = args.signatures_per_class
     debug = args.debug
 
     classifier = load_models_into_program(
@@ -362,6 +369,7 @@ def main():
         standardize_output=standardize_output,
         clamp_pixels_freq=clamp_pixels_freq,
         lambda_tv=lambda_tv,
+        signatures_per_class=signatures_per_class
     )
 
     for start_class_no in tqdm(range(0, n_classes, batch_size)):
