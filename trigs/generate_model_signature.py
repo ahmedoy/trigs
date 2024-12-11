@@ -111,21 +111,21 @@ class ClassSpecificImageGeneration:
 
         num_classes = len(target_class)
         created_images = np.uint8(
-            self.rng.uniform(0, 255, (num_classes, self.w , self.h, self.c ))
+            self.rng.uniform(0, 255, (num_classes * self.signatures_per_class, self.h, self.w, self.c ))
         )
-        print(created_images.shape)
-        processed_images = self.images_to_tensors(created_images)
+        processed_images = self.images_to_tensors(created_images) # Tensor of B,C,H,W
         processed_images = processed_images.to(get_device())
         processed_images.requires_grad = True
         targets = torch.as_tensor(target_class, device=get_device())
-        indices = torch.arange(end=len(target_class), device=get_device())
+        targets = torch.repeat_interleave(targets, repeats=self.signatures_per_class)
+        indices = torch.arange(end=len(target_class)*self.signatures_per_class, device=get_device())
         optimizer = self.optim_class(
             [processed_images], lr=self.lr, weight_decay=self.wd)
-        min_losses = [float('inf')] * len(target_class)
+        min_losses = [float('inf')] * len(target_class) * self.signatures_per_class
         best_images = processed_images.clone()
+
         for i in range(self.iterations):
             # Process image and return variable
-
             # implement gaussian blurring every blur_freq iteration to improve output
             if self.blur_freq and i % self.blur_freq == 0:
                 processed_images = ttf.gaussian_blur(processed_images.detach(),
@@ -134,8 +134,9 @@ class ClassSpecificImageGeneration:
                 processed_images.requires_grad = True
                 optimizer = self.optim_class(
                     [processed_images], lr=self.lr, weight_decay=self.wd)
+
             # Forward
-            output = self.model(processed_images)
+            output = self.model(processed_images) 
 
             # Target specific class
             if self.loss_type == 'ce':
@@ -151,12 +152,11 @@ class ClassSpecificImageGeneration:
 
             tv_loss = (self.lambda_tv * self.tv(processed_images)
                        ) if self.lambda_tv > 0. else 0.
-
             total_loss = class_loss + tv_loss
 
             for li, loss in enumerate(total_loss):
                 if loss.item() < min_losses[li]:
-                    min_losses[li] = loss.item()
+                    min_losses[li]  = loss.item()
                     best_images[li] = processed_images[li].clone()
 
             optimizer.zero_grad()
@@ -165,7 +165,7 @@ class ClassSpecificImageGeneration:
             total_loss.sum().backward()
 
             if self.normalize_grad:
-                for gi in range(len(target_class)):
+                for gi in range(len(target_class)*self.signatures_per_class):
                     img_grad = processed_images.grad[gi]
                     norm = torch.norm(img_grad, dim=[1, 2])
                     img_grad = img_grad.permute(1, 2, 0)
@@ -174,8 +174,8 @@ class ClassSpecificImageGeneration:
                     processed_images.grad[gi] = img_grad
 
             if self.clipping_val > 0:
-                torch.nn.utils.clip_grad_norm(
-                    processed_images, self.clipping_val)
+                torch.nn.utils.clip_grad_norm(processed_images, self.clipping_val)
+
             # Update image
             optimizer.step()
 
@@ -210,13 +210,14 @@ class ClassSpecificImageGeneration:
             im_as_param (torch.Tensor): a tensor that requires gradient
         """
         ims_as_arrs = np.float32(imgs)
-        ims_as_arrs = ims_as_arrs.transpose(
-            0, 3, 1, 2)  # Convert array to B,C,H,W
+        ims_as_arrs = ims_as_arrs.transpose(0, 3, 1, 2)  # Convert array to B,C,H,W
         ims_as_arrs /= 255
+
         # Normalize the channels
         for channel in range(ims_as_arrs.shape[1]):
             ims_as_arrs[:, channel, ...] -= self.mean[channel]
             ims_as_arrs[:, channel, ...] /= self.std[channel]
+
         # Convert to float tensor
         ims_as_tens = torch.from_numpy(ims_as_arrs)
         return ims_as_tens
@@ -286,9 +287,6 @@ def main():
                         help='Frequency of clamping pixel values to valid range. Use default to reproduce paper results.')
     parser.add_argument("--lambda_tv", type=float, default=0.0,
                         help='Weight of the TV loss. Use 0.01 with Tiny ImageNet and 0.001 with others.')
-    parser.add_argument("--batch_size", type=int, default=None,
-                        help='Number of signature images to create at the same time. '
-                             'Adjust based on your GPU memory for ImageNet and use default for others.')
     parser.add_argument("--signatures_per_class", type=int, default=1,
                         help='Number of min/max signatures to create per class')
     parser.add_argument("--debug", action='store_true', default=False,
@@ -312,7 +310,6 @@ def main():
     standardize_output = args.standardize_output
     clamp_pixels_freq = args.clamp_pixels_freq
     lambda_tv = args.lambda_tv
-    batch_size = args.batch_size
     signatures_per_class = args.signatures_per_class
     debug = args.debug
 
@@ -347,8 +344,6 @@ def main():
     else:
         raise ValueError(f"Unsupported dataset name: {dataset_name}")
 
-    if not batch_size:
-        batch_size = n_classes
 
     image_gen = ClassSpecificImageGeneration(
         model=classifier,
@@ -372,40 +367,41 @@ def main():
         signatures_per_class=signatures_per_class
     )
 
-    for start_class_no in tqdm(range(0, n_classes, batch_size)):
-        if debug and start_class_no > 5:
-            break
-        end_class_no = min(start_class_no + batch_size, n_classes) - 1
-        # create the minimization signature channels
-        last_file_name = os.path.join(
-            output_dir, f"+{str(end_class_no).zfill(3)}.png")
-        if not os.path.exists(last_file_name):
-            imgs, _ = image_gen.generate(
-                target_class=list(range(start_class_no, end_class_no + 1)),
-                ascent=True
-            )
-            class_no = start_class_no
-            for img in imgs:
-                im = Image.fromarray(img)
+
+    start_class_no = 0
+    end_class_no = n_classes - 1
+    
+    # create the minimization signature channels
+    last_file_name = os.path.join(
+        output_dir, f"+{str(end_class_no).zfill(3)}_{str(signatures_per_class-1)}.png")
+    if not os.path.exists(last_file_name):
+        imgs, _ = image_gen.generate(
+            target_class=list(range(start_class_no, end_class_no + 1)),
+            ascent=True
+        )
+        for class_num  in range(n_classes):
+            for signature_num in range(signatures_per_class):
+                im = Image.fromarray(imgs[class_num*signatures_per_class + signature_num])
                 out_file_name = os.path.join(
-                    output_dir, f"+{str(class_no).zfill(3)}.png")
+                    output_dir, f"+{str(class_num).zfill(3)}_{str(signature_num)}.png")
                 im.save(out_file_name)
-                class_no += 1
-        # create the maximization signature channels
-        last_file_name = os.path.join(
-            output_dir, f"-{str(end_class_no).zfill(3)}.png")
-        if not os.path.exists(last_file_name):
-            imgs, _ = image_gen.generate(
-                target_class=list(range(start_class_no, end_class_no + 1)),
-                ascent=False
-            )
-            class_no = start_class_no
-            for img in imgs:
-                im = Image.fromarray(img)
+
+    # create the maximization signature channels
+    last_file_name = os.path.join(
+        output_dir, f"-{str(end_class_no).zfill(3)}_{str(signatures_per_class-1)}.png")
+    if not os.path.exists(last_file_name):
+        imgs, _ = image_gen.generate(
+            target_class=list(range(start_class_no, end_class_no + 1)),
+            ascent=False
+        )
+
+        for class_num  in range(n_classes):
+            for signature_num in range(signatures_per_class):
+                im = Image.fromarray(imgs[class_num*signatures_per_class + signature_num])
                 out_file_name = os.path.join(
-                    output_dir, f"-{str(class_no).zfill(3)}.png")
+                    output_dir, f"-{str(class_num).zfill(3)}_{str(signature_num)}.png")
                 im.save(out_file_name)
-                class_no += 1
+    
     print("SUCCESS!")
 
 
